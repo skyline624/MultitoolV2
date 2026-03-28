@@ -67,7 +67,9 @@ const handleOpenCharactersFolder = async (
     path: string,
     toast: any
 ) => {
-    const folderPath = path.split('\\').slice(0, -1).join('\\');
+    // Compatibilité Windows (\) et Linux (/) : normaliser puis extraire le dossier parent
+    const normalized = path.replace(/\\/g, '/');
+    const folderPath = normalized.split('/').slice(0, -1).join('/');
     try {
         logger.log("Chemin du dossier des personnages :", folderPath);
         const res = await invoke("open_characters_folder", { path: folderPath });

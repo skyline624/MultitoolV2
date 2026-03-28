@@ -58,16 +58,38 @@ pub fn init_translation_files(
 ) -> Result<(), String> {
     let base_path = Path::new(&path);
 
+    // Vérifier que le chemin de base existe
+    if !base_path.exists() {
+        return Err(format!(
+            "Le chemin '{}' n'existe pas. Vérifiez que le chemin est correct et accessible depuis Linux.",
+            path
+        ));
+    }
+
+    // Vérifier que c'est bien un dossier Star Citizen
+    let star_citizen_exe = if cfg!(target_os = "windows") {
+        base_path.join("Bin64").join("StarCitizen.exe")
+    } else {
+        base_path.join("Bin64").join("StarCitizen.exe")
+    };
+
+    if !star_citizen_exe.exists() {
+        return Err(format!(
+            "Le chemin '{}' ne semble pas être une installation valide de Star Citizen. StarCitizen.exe non trouvé.",
+            path
+        ));
+    }
+
     let data_path = base_path.join("data");
     if !data_path.exists() {
         fs::create_dir(&data_path)
-            .map_err(|e| format!("Erreur lors de la création de 'data': {}", e))?;
+            .map_err(|e| format!("Erreur lors de la création de 'data': {} (chemin: {})", e, data_path.display()))?;
     }
 
     let localization_path = data_path.join("Localization");
     if !localization_path.exists() {
         fs::create_dir(&localization_path)
-            .map_err(|e| format!("Erreur lors de la création de 'Localization': {}", e))?;
+            .map_err(|e| format!("Erreur lors de la création de 'Localization': {} (chemin: {})", e, localization_path.display()))?;
     }
 
     let lang_folder_name =
@@ -76,7 +98,7 @@ pub fn init_translation_files(
     let lang_folder_path = localization_path.join(lang_folder_name);
     if !lang_folder_path.exists() {
         fs::create_dir(&lang_folder_path)
-            .map_err(|e| format!("Erreur lors de la création du dossier de langue: {}", e))?;
+            .map_err(|e| format!("Erreur lors de la création du dossier de langue: {} (chemin: {})", e, lang_folder_path.display()))?;
     }
 
     let global_ini_path = lang_folder_path.join("global.ini");
@@ -84,19 +106,19 @@ pub fn init_translation_files(
     let response = client
         .get(&translation_link)
         .send()
-        .map_err(|e| format!("Erreur lors du téléchargement: {}", e))?;
+        .map_err(|e| format!("Erreur lors du téléchargement: {}. Vérifiez votre connexion internet.", e))?;
     let content = response
         .text()
         .map_err(|e| format!("Erreur lors de la lecture de la réponse: {}", e))?;
     let mut file = File::create(&global_ini_path)
-        .map_err(|e| format!("Erreur lors de la création de 'global.ini': {}", e))?;
+        .map_err(|e| format!("Erreur lors de la création de 'global.ini': {} (chemin: {}). Vérifiez les permissions du dossier.", e, global_ini_path.display()))?;
     file.write_all(UTF8_BOM)
         .and_then(|_| file.write_all(content.as_bytes()))
         .map_err(|e| format!("Erreur lors de l'écriture de 'global.ini': {}", e))?;
 
     let user_cfg_path = base_path.join("user.cfg");
     let mut file = File::create(&user_cfg_path)
-        .map_err(|e| format!("Erreur lors de la création de 'user.cfg': {}", e))?;
+        .map_err(|e| format!("Erreur lors de la création de 'user.cfg': {} (chemin: {}). Vérifiez les permissions du dossier.", e, user_cfg_path.display()))?;
     let cfg_content = format!(
         "g_language = {}\ng_languageAudio = english\n",
         lang_folder_name
@@ -172,6 +194,14 @@ pub fn update_translation(
 ) -> Result<(), String> {
     let base_path = Path::new(&path);
 
+    // Vérifier que le chemin de base existe
+    if !base_path.exists() {
+        return Err(format!(
+            "Le chemin '{}' n'existe pas.",
+            path
+        ));
+    }
+
     // Obtenir le nom du dossier de langue
     let lang_folder_name =
         get_language_folder(&lang).ok_or_else(|| "Langue non prise en charge".to_string())?;
@@ -185,7 +215,7 @@ pub fn update_translation(
     // Vérifier et créer le dossier de langue s'il n'existe pas
     if !lang_folder_path.exists() {
         fs::create_dir_all(&lang_folder_path)
-            .map_err(|e| format!("Erreur lors de la création du dossier de langue: {}", e))?;
+            .map_err(|e| format!("Erreur lors de la création du dossier de langue: {} (chemin: {})", e, lang_folder_path.display()))?;
     }
 
     let global_ini_path = lang_folder_path.join("global.ini");
@@ -194,13 +224,13 @@ pub fn update_translation(
     let response = client
         .get(&translation_link)
         .send()
-        .map_err(|e| format!("Erreur lors du téléchargement: {}", e))?;
+        .map_err(|e| format!("Erreur lors du téléchargement: {}. Vérifiez votre connexion internet.", e))?;
     let content = response
         .text()
         .map_err(|e| format!("Erreur lors de la lecture de la réponse: {}", e))?;
 
     let mut file = File::create(&global_ini_path)
-        .map_err(|e| format!("Erreur lors de la création de 'global.ini': {}", e))?;
+        .map_err(|e| format!("Erreur lors de la création de 'global.ini': {} (chemin: {}). Vérifiez les permissions du dossier.", e, global_ini_path.display()))?;
     file.write_all(UTF8_BOM)
         .and_then(|_| file.write_all(content.as_bytes()))
         .map_err(|e| format!("Erreur lors de l'écriture de 'global.ini': {}", e))?;

@@ -22,12 +22,14 @@ _L'outil tout-en-un ultime pour Star Citizen_
 -   Installation de la traduction française pour Star Citizen (SCEFRA Uniquement)
 -   Vérification des mises à jour des traductions
 -   Désinstallation propre en un clic
+-   ✅ Compatible Windows & Linux
 
 ### 🧹 **Gestion du Cache**
 
 -   Nettoyage du cache Star Citizen
 -   Analyse de l'espace disque utilisé
 -   Ouverture rapide des dossiers système
+-   ✅ Compatible Windows & Linux
 
 ### 👥 **Gestion des Personnages**
 
@@ -35,6 +37,7 @@ _L'outil tout-en-un ultime pour Star Citizen_
 -   **Presets en ligne** : Téléchargement depuis Star Citizen Characters
 -   Duplication et organisation des presets
 -   Prévisualisation des personnages (Image fournies par Star Citizen Characters)
+-   ✅ Compatible Windows & Linux
 
 ### 📋 **Patchnotes & Suivi**
 
@@ -52,7 +55,7 @@ _L'outil tout-en-un ultime pour Star Citizen_
 
 ## 📥 Installation
 
-### 🏆 **RECOMMANDÉ - Version Portable**
+### 🏆 **RECOMMANDÉ - Version Portable (Windows)**
 
 _Aucune installation, aucun avertissement Windows_
 
@@ -62,7 +65,7 @@ _Aucune installation, aucun avertissement Windows_
 3. Profitez ! ✨
 ```
 
-### 💾 **Installation Standard (MSI)**
+### 💾 **Installation Standard (MSI) - Windows**
 
 _Installation système classique_
 
@@ -75,6 +78,44 @@ _Installation système classique_
 ### 🏪 **Microsoft Store**
 
 _Version signée officiellement par Microsoft - Disponible sur le Store : https://apps.microsoft.com/detail/9MWD1VN65WCN?hl=fr&gl=FR&ocid=pdpshare_
+
+### 🐧 **Linux**
+
+_Star Citizen tourne sur Linux via **Proton/Wine** (ex : Lutris, Steam avec Proton). MultitoolV2 doit être compilé depuis les sources._
+
+```bash
+# Prérequis : Rust, Node.js, pnpm, et les dépendances système Tauri
+# Voir : https://tauri.app/start/prerequisites/
+
+git clone https://github.com/skyline624/MultitoolV2.git
+cd MultitoolV2
+pnpm install
+pnpm tauri build
+```
+
+> Le binaire compilé se trouve dans `src-tauri/target/release/`.
+
+#### ⚙️ Configuration du chemin de jeu sous Linux
+
+Sur Linux, le launcher RSI ne tourne pas nativement, donc **la détection automatique du chemin Star Citizen est désactivée**. Vous devez configurer manuellement le chemin vers votre installation dans les paramètres de l'application.
+
+Le chemin est généralement de la forme :
+```
+~/.local/share/Steam/steamapps/compatdata/<app_id>/pfx/drive_c/Program Files/Roberts Space Industries/StarCitizen/LIVE
+```
+ou selon votre configuration Lutris/Proton.
+
+#### ⚠️ Limitations sous Linux
+
+| Fonctionnalité            | Windows | Linux |
+| ------------------------- | ------- | ----- |
+| Traduction                | ✅      | ✅    |
+| Gestion des personnages   | ✅      | ✅    |
+| Gestion du cache          | ✅      | ✅    |
+| Détection auto du chemin  | ✅      | ❌    |
+| Effets visuels (acrylique)| ✅      | ❌    |
+
+> Sur Linux, le cache correspond au dossier `AppData/Local/Star Citizen/` du préfixe Wine (RSI Launcher), ou au dossier `user/` du répertoire du jeu en fallback.
 
 ---
 
@@ -142,7 +183,7 @@ curl -L -o MultitoolV2.exe https://github.com/Onivoid/MultitoolV2/releases/lates
 
 ```bash
 # Cloner le projet
-git clone https://github.com/Onivoid/MultitoolV2.git
+git clone https://github.com/skyline624/MultitoolV2.git
 cd MultitoolV2
 
 # Installer les dépendances
@@ -154,6 +195,22 @@ pnpm tauri dev
 # Build de production
 pnpm tauri build
 ```
+
+#### Développement sous Linux
+
+Assurez-vous d'avoir installé les dépendances système requises par Tauri :
+
+```bash
+# Ubuntu/Debian
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+# Fedora
+sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file \
+  libappindicator-gtk3-devel librsvg2-devel
+```
+
+> Voir la documentation officielle : https://tauri.app/start/prerequisites/
 
 👀 **Pour les instructions de build détaillées :** [BUILD.md](BUILD.md)
 

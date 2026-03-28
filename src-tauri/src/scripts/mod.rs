@@ -1,6 +1,7 @@
 pub mod background_service;
 pub mod cache_functions;
 pub mod gamepath;
+pub mod gamepath_preferences;
 pub mod local_characters_functions;
 pub mod patchnote;
 pub mod presets_list_functions;

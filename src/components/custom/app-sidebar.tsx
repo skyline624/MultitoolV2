@@ -38,6 +38,10 @@ import { useSidebar } from "@/components/ui/sidebar";
 import openExternal from "@/utils/external";
 import { useEffect, useState } from "react";
 import { getBuildInfo, BuildInfo } from "@/utils/buildInfo";
+import { usePlatform } from "@/hooks/usePlatform";
+import { useGamePaths } from "@/hooks/useGamePaths";
+import { Button } from "@/components/ui/button";
+import { Plus, X } from "lucide-react";
 
 // Menu principal
 const menuItems = [
@@ -315,6 +319,15 @@ function SettingsContent() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [serviceRunning, setServiceRunning] = useState(false);
+    const { isWindows } = usePlatform();
+    const {
+        customPaths,
+        gameVersions,
+        addPath,
+        removePath,
+        clearPaths,
+        validatePath,
+    } = useGamePaths();
 
     // Configuration du service de fond
     const [config, setConfig] = useState<BackgroundServiceConfig>({
@@ -326,6 +339,10 @@ function SettingsContent() {
     // État du démarrage automatique
     const [autoStartupEnabled, setAutoStartupEnabled] = useState(false);
     const [checkingAutoStartup, setCheckingAutoStartup] = useState(true);
+
+    // État pour l'ajout de chemin
+    const [customPathInput, setCustomPathInput] = useState("");
+    const [isAddingPath, setIsAddingPath] = useState(false);
 
     // Charger la configuration au montage
     useEffect(() => {
@@ -450,6 +467,71 @@ function SettingsContent() {
         }
     };
 
+    const handleAddCustomPath = async () => {
+        const path = customPathInput.trim();
+        if (!path) return;
+
+        setIsAddingPath(true);
+        try {
+            const isValid = await validatePath(path);
+            if (!isValid) {
+                toast({
+                    title: "Chemin invalide",
+                    description: "Ce dossier ne contient pas d'installation valide de Star Citizen",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            await addPath(path);
+            setCustomPathInput("");
+            toast({
+                title: "Chemin ajouté",
+                description: "Le chemin a été ajouté avec succès",
+            });
+        } catch (error) {
+            toast({
+                title: "Erreur",
+                description: String(error),
+                variant: "destructive",
+            });
+        } finally {
+            setIsAddingPath(false);
+        }
+    };
+
+    const handleRemovePath = async (path: string) => {
+        try {
+            await removePath(path);
+            toast({
+                title: "Chemin supprimé",
+                description: "Le chemin a été retiré de la liste",
+            });
+        } catch (error) {
+            toast({
+                title: "Erreur",
+                description: String(error),
+                variant: "destructive",
+            });
+        }
+    };
+
+    const handleClearPaths = async () => {
+        try {
+            await clearPaths();
+            toast({
+                title: "Chemins réinitialisés",
+                description: "Tous les chemins personnalisés ont été supprimés",
+            });
+        } catch (error) {
+            toast({
+                title: "Erreur",
+                description: String(error),
+                variant: "destructive",
+            });
+        }
+    };
+
     return (
         <div className="space-y-6 py-4">
             {/* Apparence */}
@@ -480,6 +562,94 @@ function SettingsContent() {
                         disabled={loading || checkingAutoStartup}
                     />
                 </div>
+            </div>
+
+            <Separator />
+
+            {/* Chemin Star Citizen */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Chemin Star Citizen</h3>
+                <div className="space-y-0.5">
+                    <p className="text-sm text-muted-foreground">
+                        {!isWindows
+                            ? "Sur Linux, vous devez spécifier le chemin de votre installation Star Citizen (via Proton/Wine)."
+                            : "Ajoutez des chemins personnalisés si la détection automatique ne fonctionne pas."}
+                    </p>
+                </div>
+
+                {/* Liste des chemins détectés/configurés */}
+                {Object.keys(gameVersions.versions).length > 0 && (
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Versions détectées :</p>
+                        <div className="space-y-1">
+                            {Object.entries(gameVersions.versions).map(([version, info]) => (
+                                <div key={version} className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                                    <span className="font-medium text-sm">{version}</span>
+                                    <span className="text-xs text-muted-foreground truncate flex-1">{info.path}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Liste des chemins personnalisés */}
+                {customPaths.length > 0 && (
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Chemins personnalisés :</p>
+                        <div className="space-y-1">
+                            {customPaths.map((path, index) => (
+                                <div key={index} className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                                    <span className="flex-1 text-sm truncate">{path}</span>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleRemovePath(path)}
+                                        disabled={loading}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Formulaire d'ajout */}
+                <div className="space-y-3">
+                    <div className="flex gap-2">
+                        <Input
+                            placeholder={isWindows
+                                ? "Ex: C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE"
+                                : "Ex: /home/user/.wine/drive_c/Program Files/Roberts Space Industries/StarCitizen/LIVE"}
+                            value={customPathInput}
+                            onChange={(e) => setCustomPathInput(e.target.value)}
+                            className="flex-1"
+                            disabled={isAddingPath}
+                        />
+                        <Button
+                            onClick={handleAddCustomPath}
+                            disabled={isAddingPath || !customPathInput.trim()}
+                        >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Ajouter
+                        </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Le chemin doit contenir un dossier StarCitizen avec les fichiers Bin64 et Data.p4k
+                    </p>
+                </div>
+
+                {/* Bouton de réinitialisation */}
+                {customPaths.length > 0 && (
+                    <Button
+                        variant="outline"
+                        onClick={handleClearPaths}
+                        disabled={loading}
+                        className="text-destructive"
+                    >
+                        Réinitialiser les chemins personnalisés
+                    </Button>
+                )}
             </div>
 
             <Separator />

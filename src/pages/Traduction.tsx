@@ -3,18 +3,20 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
     GamePaths,
-    isGamePaths,
     TranslationsChoosen,
 } from "@/types/translation";
 import { Button } from "@/components/ui/button";
 import logger from "@/utils/logger";
-import { Loader2, XCircle, CheckCircle, AlertCircle, HelpCircle } from "lucide-react";
+import { Loader2, XCircle, CheckCircle, AlertCircle, HelpCircle, FolderOpen, Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import PageHeader from "@/components/custom/PageHeader";
 import { IconLanguage } from "@tabler/icons-react";
+import { usePlatform } from "@/hooks/usePlatform";
+import { useGamePaths } from "@/hooks/useGamePaths";
+import { Input } from "@/components/ui/input";
 
 export default function Traduction() {
     const [paths, setPaths] = useState<GamePaths | null>();
@@ -22,9 +24,20 @@ export default function Traduction() {
     const [translationsSelected, setTranslationsSelected] = useState<TranslationsChoosen | null>(null);
     const [loadingButtonId, setLoadingButtonId] = useState<string | null>(null);
     const [dataFetched, setDataFetched] = useState<boolean>(false);
+    const [customPathInput, setCustomPathInput] = useState("");
+    const [isAddingPath, setIsAddingPath] = useState(false);
 
     const defaultLanguage = "fr";
     const { toast } = useToast();
+    const { isWindows } = usePlatform();
+    const {
+        customPaths,
+        gameVersions,
+        addPath,
+        removePath,
+        clearPaths,
+        validatePath,
+    } = useGamePaths();
 
     const isProtectedPath = (p: string) => /:\\Program Files( \(x86\))?\\/i.test(p);
     const toFriendlyFsError = (err: unknown) => {
@@ -47,16 +60,49 @@ export default function Traduction() {
         return defaults;
     };
 
+    // Charger les versions du jeu depuis le hook useGamePaths
+    useEffect(() => {
+        if (gameVersions && Object.keys(gameVersions.versions).length > 0) {
+            logger.log("Versions du jeu reçues:", gameVersions);
+            setPaths(gameVersions);
+
+            // Réinitialiser translationsSelected pour les nouvelles versions
+            setTranslationsSelected(prev => {
+                if (!prev) {
+                    // Première initialisation
+                    const defaults: TranslationsChoosen = {};
+                    Object.keys(gameVersions.versions).forEach(version => {
+                        defaults[version] = { link: null, settingsEN: false };
+                    });
+                    return defaults;
+                }
+
+                // Fusionner avec les préférences existantes
+                const merged = { ...prev };
+                Object.keys(gameVersions.versions).forEach(version => {
+                    if (!merged[version]) {
+                        merged[version] = { link: null, settingsEN: false };
+                    }
+                });
+                return merged;
+            });
+
+            // Réinitialiser dataFetched pour recharger les données
+            setDataFetched(false);
+        } else if (customPaths.length === 0) {
+            // Aucun chemin personnalisé et aucune version détectée
+            setPaths(null);
+        }
+    }, [gameVersions, customPaths]);
+
     useEffect(() => {
         const fetchData = async () => {
             if (dataFetched) return;
-            try {
-                const versions = await invoke("get_star_citizen_versions");
-                if (isGamePaths(versions)) {
-                    logger.log("Versions du jeu reçues:", versions);
-                    setPaths(versions);
-                }
 
+            // Attendre que les chemins soient chargés
+            if (!paths || Object.keys(paths.versions).length === 0) return;
+
+            try {
                 logger.log("Récupération des traductions...");
                 const translationsData = await invoke("get_translations");
                 logger.log("Données de traduction reçues:", translationsData);
@@ -70,6 +116,7 @@ export default function Traduction() {
                     setTranslationsSelected(getDefaultTranslationsState());
                 }
 
+                setDataFetched(true);
                 return true;
             } catch (error) {
                 console.error("Erreur lors du chargement des données:", error);
@@ -78,8 +125,7 @@ export default function Traduction() {
             }
         };
 
-        if (!dataFetched) {
-            setDataFetched(true);
+        if (!dataFetched && paths && Object.keys(paths.versions).length > 0) {
             fetchData().then((dataStatus) => {
                 dataStatus
                     ? toast({
@@ -96,7 +142,7 @@ export default function Traduction() {
                     });
             });
         }
-    }, []);
+    }, [paths, dataFetched]);
 
     const saveSelectedTranslations = useCallback(
         async (newTranslationsSelected: TranslationsChoosen) => {
@@ -165,8 +211,18 @@ export default function Traduction() {
 
     const handleInstallTranslation = useCallback(
         async (versionPath: string, version: string) => {
-            logger.log("Installation de la traduction pour la version:", version);
-            if (!translationsSelected) return;
+            logger.log("Installation de la traduction pour la version:", version, "chemin:", versionPath);
+            logger.log("translationsSelected:", translationsSelected);
+
+            if (!translationsSelected) {
+                toast({
+                    title: "Erreur",
+                    description: "Les données de traduction ne sont pas encore chargées. Veuillez patienter.",
+                    variant: "destructive",
+                    duration: 3000,
+                });
+                return;
+            }
 
             setLoadingButtonId(`install-${version}`);
             if (isProtectedPath(versionPath)) {
@@ -179,6 +235,7 @@ export default function Traduction() {
             }
 
             const versionSettings = translationsSelected[version as keyof TranslationsChoosen];
+            logger.log("versionSettings pour", version, ":", versionSettings);
             if (!versionSettings || !versionSettings.link) {
                 logger.log("Récupération de la traduction settings-fr...");
                 try {
@@ -218,22 +275,35 @@ export default function Traduction() {
                         setTranslationsSelected(updatedTranslations);
                         saveSelectedTranslations(updatedTranslations);
 
-                        logger.log("Installation avec lien:", link);
-                        await invoke("init_translation_files", {
-                            path: versionPath,
-                            translationLink: link,
-                            lang: defaultLanguage,
-                        });
+                        logger.log("Installation avec lien:", link, "vers:", versionPath);
+                        try {
+                            await invoke("init_translation_files", {
+                                path: versionPath,
+                                translationLink: link,
+                                lang: defaultLanguage,
+                            });
 
-                        toast({
-                            title: "Traduction installée",
-                            description: "La traduction a été installée avec succès.",
-                            variant: "success",
-                            duration: 3000,
-                        });
+                            toast({
+                                title: "Traduction installée",
+                                description: "La traduction a été installée avec succès.",
+                                variant: "success",
+                                duration: 3000,
+                            });
 
-                        if (paths) CheckTranslationsState(paths);
+                            if (paths) CheckTranslationsState(paths);
+                        } catch (installError) {
+                            logger.error("Erreur lors de l'installation:", installError);
+                            toast({
+                                title: "Erreur d'installation",
+                                description: `Erreur: ${toFriendlyFsError(installError)}`,
+                                variant: "destructive",
+                                duration: 5000,
+                            });
+                        } finally {
+                            setLoadingButtonId(null);
+                        }
                     } else {
+                        logger.error("Aucun lien de traduction trouvé");
                         toast({
                             title: "Erreur d'installation",
                             description: "Impossible de récupérer le lien de traduction.",
@@ -482,6 +552,72 @@ export default function Traduction() {
         [toast, paths, CheckTranslationsState],
     );
 
+    // Gestion de l'ajout d'un chemin personnalisé
+    const handleAddCustomPath = useCallback(async () => {
+        const path = customPathInput.trim();
+        if (!path) return;
+
+        setIsAddingPath(true);
+        try {
+            const isValid = await validatePath(path);
+            if (!isValid) {
+                toast({
+                    title: "Chemin invalide",
+                    description: "Ce dossier ne contient pas d'installation valide de Star Citizen",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            await addPath(path);
+            setCustomPathInput("");
+            toast({
+                title: "Chemin ajouté",
+                description: "Le chemin a été ajouté avec succès",
+            });
+        } catch (error) {
+            toast({
+                title: "Erreur",
+                description: String(error),
+                variant: "destructive",
+            });
+        } finally {
+            setIsAddingPath(false);
+        }
+    }, [customPathInput, validatePath, addPath, toast]);
+
+    const handleRemovePath = useCallback(async (path: string) => {
+        try {
+            await removePath(path);
+            toast({
+                title: "Chemin supprimé",
+                description: "Le chemin a été retiré de la liste",
+            });
+        } catch (error) {
+            toast({
+                title: "Erreur",
+                description: String(error),
+                variant: "destructive",
+            });
+        }
+    }, [removePath, toast]);
+
+    const handleClearPaths = useCallback(async () => {
+        try {
+            await clearPaths();
+            toast({
+                title: "Chemins réinitialisés",
+                description: "Tous les chemins personnalisés ont été supprimés",
+            });
+        } catch (error) {
+            toast({
+                title: "Erreur",
+                description: String(error),
+                variant: "destructive",
+            });
+        }
+    }, [clearPaths, toast]);
+
     const renderCard = useMemo(() => {
         if (!paths || !translationsSelected) return null;
 
@@ -689,17 +825,89 @@ export default function Traduction() {
                 </div>
             ) : (
                 <div className="flex flex-col items-center justify-center w-full h-screen">
-                    <h2 className="text-3xl font-bold mb-2">
-                        Aucune version du jeu n{"'"}a été trouvée
-                    </h2>
-                    <p className="max-w-[500px] text-center leading-7">
-                        Pour régler ce problème, lancez Star Citizen, puis
-                        rechargez cette page en faisant la manipulation suivante
-                        :
-                        <span className="bg-gray-500 px-2 py-1 ml-2">
-                            CRTL + R
-                        </span>
-                    </p>
+                    <PageHeader
+                        icon={<IconLanguage className="h-6 w-6" />}
+                        title="Gestionnaire de traduction"
+                        description="Gérez les traductions de Star Citizen"
+                    />
+
+                    <div className="flex flex-1 items-center justify-center">
+                        <div className="flex flex-col items-center gap-6 text-center p-8 max-w-lg">
+                            <FolderOpen className="h-16 w-16 text-muted-foreground" />
+                            <h2 className="text-xl font-semibold">Aucune version du jeu détectée</h2>
+                            <p className="text-muted-foreground">
+                                {!isWindows
+                                    ? "Sur Linux, vous devez spécifier le chemin de votre installation Star Citizen (via Proton/Wine)."
+                                    : "Aucune installation de Star Citizen n'a été détectée automatiquement."}
+                            </p>
+                            <p className="text-muted-foreground text-sm">
+                                Vous pouvez spécifier manuellement le chemin d'installation.
+                            </p>
+
+                            {/* Liste des chemins personnalisés */}
+                            {customPaths.length > 0 && (
+                                <div className="w-full space-y-2">
+                                    <p className="text-sm font-medium text-left w-full">Chemins configurés :</p>
+                                    <div className="space-y-2">
+                                        {customPaths.map((path, index) => (
+                                            <div key={index} className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                                                <span className="flex-1 text-sm truncate">{path}</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleRemovePath(path)}
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Formulaire d'ajout */}
+                            <div className="w-full space-y-4">
+                                <div className="flex gap-2">
+                                    <Input
+                                        placeholder={isWindows
+                                            ? "Ex: C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE"
+                                            : "Ex: /home/user/.wine/drive_c/Program Files/Roberts Space Industries/StarCitizen/LIVE"}
+                                        value={customPathInput}
+                                        onChange={(e) => setCustomPathInput(e.target.value)}
+                                        className="flex-1"
+                                        disabled={isAddingPath}
+                                    />
+                                    <Button
+                                        onClick={handleAddCustomPath}
+                                        disabled={isAddingPath || !customPathInput.trim()}
+                                    >
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Ajouter
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Le chemin doit contenir un dossier StarCitizen avec les fichiers Bin64 et Data.p4k
+                                </p>
+                            </div>
+
+                            {customPaths.length > 0 && (
+                                <Button
+                                    variant="outline"
+                                    onClick={handleClearPaths}
+                                    className="text-destructive"
+                                >
+                                    Réinitialiser les chemins personnalisés
+                                </Button>
+                            )}
+
+                            {isWindows && (
+                                <p className="text-xs text-muted-foreground max-w-[400px]">
+                                    Si le jeu est installé mais non détecté, lancez Star Citizen puis
+                                    rechargez cette page avec <span className="bg-gray-500 px-2 py-1 ml-1">CTRL + R</span>
+                                </p>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
         </motion.div>
