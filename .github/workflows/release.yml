@@ -1,4 +1,4 @@
-name: Release Windows Builds
+name: Release
 
 on:
     push:
@@ -287,3 +287,84 @@ jobs:
                   Write-Host ""
                   Write-Host "🌐 Release disponible sur:" -ForegroundColor Cyan
                   Write-Host "   https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" -ForegroundColor Blue
+
+    build-linux:
+        name: Build Linux Release
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install system dependencies (Tauri)
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y \
+                    libwebkit2gtk-4.1-dev \
+                    libayatana-appindicator3-dev \
+                    librsvg2-dev \
+                    libssl-dev \
+                    build-essential
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v2
+              with:
+                  version: latest
+
+            - name: Setup Node.js with pnpm cache
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "pnpm"
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: stable
+
+            - name: Rust cache
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: "./src-tauri -> target"
+
+            - name: Install frontend dependencies
+              run: pnpm install
+
+            - name: Build Linux Release
+              env:
+                  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+                  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+              run: cargo tauri build
+
+            - name: Collect artifacts
+              run: |
+                  mkdir -p builds/linux
+
+                  # DEB
+                  DEB=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
+                  if [ -n "$DEB" ]; then
+                      cp "$DEB" builds/linux/MultitoolV2_amd64.deb
+                      echo "✓ DEB: $DEB"
+                  fi
+
+                  # AppImage
+                  APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
+                  if [ -n "$APPIMAGE" ]; then
+                      cp "$APPIMAGE" builds/linux/MultitoolV2_amd64.AppImage
+                      echo "✓ AppImage: $APPIMAGE"
+                  fi
+
+                  # Checksums
+                  cd builds/linux
+                  sha256sum * > checksums-linux.txt
+                  cat checksums-linux.txt
+
+            - name: Upload Linux artifacts to release
+              uses: softprops/action-gh-release@v1
+              with:
+                  files: |
+                      builds/linux/MultitoolV2_amd64.deb
+                      builds/linux/MultitoolV2_amd64.AppImage
+                      builds/linux/checksums-linux.txt
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
