@@ -193,56 +193,59 @@ jobs:
               run: |
                   $version = "${{ github.ref_name }}"
                   $notes = @"
-                  # MultitoolV2 $version - Release Windows (Non-signé)
+                  # MultitoolV2 $version
 
-                  ## ⚠️ Avertissement Sécurité - Builds Non-signés
+                  ## 🆕 Nouveautés
 
-                  Cette application n'est **pas signée numériquement** (certificat coûteux pour un projet open-source).
-                  Windows SmartScreen affichera un avertissement - c'est **normal et attendu**.
+                  ### 🐧 Support Linux (Proton/Wine)
 
-                  ## 📥 Options d'Installation
+                  Star Citizen tourne sur Linux via Proton/Wine (Lutris, Steam). MultitoolV2 supporte désormais Linux nativement :
 
-                  1. **🏆 RECOMMANDÉ - Version Portable** : Aucune installation, pas d'avertissement SmartScreen
-                  2. **💻 Installer Standard** : Avertissement SmartScreen attendu (cliquez "Informations complémentaires" → "Exécuter quand même")
-                  3. **🏪 MS Store Distribution** : Version préparée pour Microsoft Store (avec variables d'environnement MS Store)
+                  - ✅ **Traduction** : installation et mise à jour de la traduction française
+                  - ✅ **Gestion des personnages** : lecture, duplication et suppression des presets locaux
+                  - ✅ **Personnages en ligne** : téléchargement depuis Star Citizen Characters
+                  - ✅ **Gestion du cache** : détection automatique dans le préfixe Wine (`drive_c/users/*/AppData/Local/Star Citizen/`)
+                  - ✅ **Builds Linux** : paquets `.deb` et `.AppImage` disponibles dans cette release
 
-                  ## 🔐 Vérification de Sécurité
+                  > **Configuration requise sous Linux** : renseigner le chemin d'installation de Star Citizen dans les Préférences.
 
-                  - ✅ **Code source ouvert** : Entièrement auditable sur GitHub
-                  - ✅ **Build reproductible** : Workflow GitHub Actions public  
-                  - ✅ **Checksums SHA256** : Vérification d'intégrité fournie ci-dessous
+                  ---
 
-                  ## 🔄 Mise à jour automatique
+                  ## 📥 Téléchargements
 
-                  Les versions GitHub (installateur MSI) supportent les **mises à jour automatiques** :
+                  ### 🪟 Windows
+                  | Fichier | Description |
+                  |---|---|
+                  | `MultitoolV2-Portable.exe` | **Recommandé** — aucune installation |
+                  | `MultitoolV2-Installer.msi` | Installateur standard |
+                  | `MultitoolV2-Installer-MSStore.msi` | Distribution Microsoft Store |
+
+                  ### 🐧 Linux
+                  | Fichier | Description |
+                  |---|---|
+                  | `MultitoolV2_amd64.deb` | Paquet Debian/Ubuntu |
+                  | `MultitoolV2_amd64.AppImage` | Portable universel |
+
+                  ---
+
+                  ## ⚠️ Windows — Application non-signée
+
+                  Cette application est **100% gratuite et open-source**. Les certificats de signature coûtent ~300€/an.
+                  Si SmartScreen apparaît : **"Informations complémentaires"** → **"Exécuter quand même"**, ou utilisez la version Portable.
+
+                  ## 🔄 Mise à jour automatique (Windows MSI uniquement)
+
                   - ✅ Vérification automatique au démarrage
-                  - ✅ Téléchargement en arrière-plan
-                  - ✅ Installation en un clic
+                  - ✅ Téléchargement et installation en un clic
 
-                  **Note :** La version portable ne supporte pas les mises à jour automatiques.
-
-                  ## 📋 Checksums SHA256
+                  ## 🔐 Checksums SHA256 — Windows
 
                   ``````
                   $(Get-Content builds/checksums.txt -Raw)
                   ``````
 
-                  ### Comment installer une app non-signée sur Windows :
-                  1. Téléchargez le fichier souhaité
-                  2. Si SmartScreen apparaît : **"Informations complémentaires"** → **"Exécuter quand même"**
-                  3. Ou utilisez la **version portable** (recommandé - pas d'installation)
-
-                  ### Vérifier l'intégrité (optionnel) :
-                  ``````powershell
-                  Get-FileHash MultitoolV2-Installer.msi -Algorithm SHA256
-                  Get-FileHash MultitoolV2-Portable.exe -Algorithm SHA256
-                  ``````
-
                   ---
-                  **Pourquoi pas de signature ?** Les certificats de signature coûtent ~300€/an. 
-                  Pour un projet gratuit et open-source, nous privilégions la transparence totale du code.
-
-                  **Microsoft Store :** Une version signée par Microsoft sera disponible séparément sur le Microsoft Store.
+                  **Microsoft Store :** Une version signée par Microsoft est disponible séparément sur le Microsoft Store.
                   "@
 
                   $notes | Out-File -FilePath "RELEASE_NOTES.md" -Encoding utf8
