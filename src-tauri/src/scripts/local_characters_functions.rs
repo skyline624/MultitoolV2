@@ -5,7 +5,6 @@ use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use tauri::command;
-use tauri::Manager;
 use tokio::process::Command;
 
 #[derive(Serialize)]
@@ -141,33 +140,14 @@ pub async fn open_characters_folder(path: String) -> Result<bool, String> {
 
 /// Charge les versions de Star Citizen depuis la configuration sauvegardée.
 fn load_versions_from_config(app: &tauri::AppHandle) -> VersionPaths {
-    let config_dir = match app.path().app_config_dir() {
-        Ok(d) => d,
-        Err(_) => return VersionPaths { versions: std::collections::HashMap::new() },
-    };
-
-    let config_file = config_dir.join("game_paths.json");
-    if !config_file.exists() {
-        return VersionPaths { versions: std::collections::HashMap::new() };
-    }
-
-    let json_data = match fs::read_to_string(&config_file) {
-        Ok(d) => d,
-        Err(_) => return VersionPaths { versions: std::collections::HashMap::new() },
-    };
-
-    #[derive(serde::Deserialize)]
-    struct GamePaths { paths: Vec<String> }
-
-    let game_paths: GamePaths = match serde_json::from_str(&json_data) {
-        Ok(p) => p,
-        Err(_) => return VersionPaths { versions: std::collections::HashMap::new() },
-    };
-
-    get_custom_game_versions(game_paths.paths)
+    use crate::scripts::gamepath_preferences::read_saved_paths;
+    get_custom_game_versions(read_saved_paths(app))
 }
 
 /// Duplique un personnage personnalisé vers toutes les autres versions de Star Citizen installées.
+///
+/// Retourne `Ok(true)` si au moins une copie a été effectuée, `Ok(false)` si aucune autre
+/// version n'est installée (installation unique).
 #[command]
 pub fn duplicate_character(app: tauri::AppHandle, character_path: String) -> Result<bool, String> {
     let versions = load_versions_from_config(&app);
@@ -177,15 +157,15 @@ pub fn duplicate_character(app: tauri::AppHandle, character_path: String) -> Res
         return Err(format!("Le fichier '{}' n'existe pas.", character_path));
     }
 
-    let file_name = match source.file_name() {
-        Some(name) => name,
-        None => return Err("Nom de fichier invalide".to_string()),
-    };
+    let file_name = source
+        .file_name()
+        .ok_or_else(|| "Nom de fichier invalide".to_string())?;
 
-    let source_dir = match source.parent() {
-        Some(dir) => dir,
-        None => return Err("Impossible de déterminer le répertoire source".to_string()),
-    };
+    let source_dir = source
+        .parent()
+        .ok_or_else(|| "Impossible de déterminer le répertoire source".to_string())?;
+
+    let mut copies_made: u32 = 0;
 
     for info in versions.versions.values() {
         let dest_dir = Path::new(&info.path)
@@ -199,26 +179,28 @@ pub fn duplicate_character(app: tauri::AppHandle, character_path: String) -> Res
         }
 
         if !dest_dir.exists() {
-            if let Err(e) = fs::create_dir_all(&dest_dir) {
-                return Err(format!(
+            fs::create_dir_all(&dest_dir).map_err(|e| {
+                format!(
                     "Erreur lors de la création du dossier '{}': {}",
                     dest_dir.display(),
                     e
-                ));
-            }
+                )
+            })?;
         }
 
         let dest_file = dest_dir.join(file_name);
-        if let Err(e) = fs::copy(&source, dest_file) {
-            return Err(format!(
+        fs::copy(&source, dest_file).map_err(|e| {
+            format!(
                 "Erreur lors de la copie vers '{}': {}",
                 dest_dir.display(),
                 e
-            ));
-        }
+            )
+        })?;
+
+        copies_made += 1;
     }
 
-    Ok(true)
+    Ok(copies_made > 0)
 }
 
 /// Télécharge un personnage personnalisé depuis une URL et le sauvegarde dans toutes les versions installées.

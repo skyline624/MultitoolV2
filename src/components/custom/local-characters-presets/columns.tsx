@@ -39,19 +39,24 @@ const deleteCharacter = async (
 const duplicateCharacter = async (
     path: string,
     toast: any,
-    onSuccess?: () => void // Ajouter un callback optionnel
+    onSuccess?: () => void
 ) => {
     try {
-        const res = await invoke("duplicate_character", { characterPath: path });
+        const res = await invoke<boolean>("duplicate_character", { characterPath: path });
         if (res) {
             toast({
                 title: "Preset dupliqué",
-                description: "Le preset a été copié sur toutes les versions.",
+                description: "Le preset a été copié sur toutes les autres versions.",
                 variant: "success",
                 duration: 3000,
             });
-            // Appeler le callback de succès
             onSuccess?.();
+        } else {
+            toast({
+                title: "Aucune autre version",
+                description: "Le preset existe déjà dans la seule version installée.",
+                duration: 3000,
+            });
         }
     } catch (error) {
         toast({

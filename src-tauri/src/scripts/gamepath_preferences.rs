@@ -46,6 +46,15 @@ pub fn load_custom_game_paths(app: tauri::AppHandle) -> Result<CustomGamePaths, 
     Ok(data)
 }
 
+/// Retourne la liste brute des chemins de jeu sauvegardés. Vec vide si aucun ou en cas d'erreur.
+///
+/// Fonction utilitaire interne réutilisable par les autres modules (DRY).
+pub fn read_saved_paths(app: &tauri::AppHandle) -> Vec<String> {
+    load_custom_game_paths(app.clone())
+        .map(|p| p.paths)
+        .unwrap_or_default()
+}
+
 /// Efface les chemins personnalisés
 #[command]
 pub fn clear_custom_game_paths(app: tauri::AppHandle) -> Result<(), String> {

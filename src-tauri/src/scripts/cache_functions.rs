@@ -21,67 +21,54 @@ struct Output {
     folders: Vec<FolderInfo>,
 }
 
-#[cfg(target_os = "windows")]
-fn get_cache_path() -> String {
-    let appdata = env::var("LOCALAPPDATA")
-        .expect("Impossible de lire la variable d'environnement LOCALAPPDATA");
-    format!("{}\\Star Citizen", appdata)
-}
+// ─── Helpers communs ──────────────────────────────────────────────────────────
 
-fn get_weight(path: &Path) -> String {
-    let mut total_size = 0;
-
-    if path.is_dir() {
-        for entry in fs::read_dir(path).expect("Impossible de lire le répertoire") {
-            let entry = entry.expect("Erreur lors de la lecture de l'entrée");
-            let path = entry.path();
-            if path.is_file() {
-                total_size += fs::metadata(&path)
-                    .expect("Impossible de lire les métadonnées")
-                    .len();
-            } else if path.is_dir() {
-                total_size += get_folder_size(&path);
-            }
-        }
-    }
-
-    if total_size < 1_048_576 {
-        let size_in_kb = total_size as f64 / 1_024.0;
-        format!("{:.0} Ko", size_in_kb)
-    } else {
-        let size_in_megabytes = total_size as f64 / 1_048_576.0;
-        format!("{:.1} Mo", size_in_megabytes)
-    }
-}
-
+/// Calcule récursivement la taille d'un dossier en octets.
+/// Les entrées illisibles (permissions, liens brisés) sont silencieusement ignorées.
 fn get_folder_size(path: &Path) -> u64 {
-    let mut total_size = 0;
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .map(|e| {
+            let p = e.path();
+            if p.is_file() {
+                fs::metadata(&p).map(|m| m.len()).unwrap_or(0)
+            } else if p.is_dir() {
+                get_folder_size(&p)
+            } else {
+                0
+            }
+        })
+        .sum()
+}
 
-    for entry in fs::read_dir(path).expect("Impossible de lire le répertoire") {
-        let entry = entry.expect("Erreur lors de la lecture de l'entrée");
-        let path = entry.path();
-        if path.is_file() {
-            total_size += fs::metadata(&path)
-                .expect("Impossible de lire les métadonnées")
-                .len();
-        } else if path.is_dir() {
-            total_size += get_folder_size(&path);
-        }
+/// Formate la taille d'un dossier en Ko ou Mo.
+fn get_weight(path: &Path) -> String {
+    let total = get_folder_size(path);
+    if total < 1_048_576 {
+        format!("{:.0} Ko", total as f64 / 1_024.0)
+    } else {
+        format!("{:.1} Mo", total as f64 / 1_048_576.0)
     }
-
-    total_size
 }
 
 fn get_folder_info(path: &Path) -> FolderInfo {
-    let folder_name = path.file_name().unwrap().to_string_lossy().to_string();
-    let folder_weight = get_weight(path);
-    let folder_path = path.to_string_lossy().to_string();
-
     FolderInfo {
-        name: folder_name,
-        weight: folder_weight,
-        path: folder_path,
+        name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        weight: get_weight(path),
+        path: path.to_string_lossy().to_string(),
     }
+}
+
+// ─── Helpers Windows ──────────────────────────────────────────────────────────
+
+#[cfg(target_os = "windows")]
+fn get_cache_path() -> Result<String, String> {
+    let appdata = env::var("LOCALAPPDATA")
+        .map_err(|_| "Variable d'environnement LOCALAPPDATA non définie".to_string())?;
+    Ok(format!("{}\\Star Citizen", appdata))
 }
 
 // ─── Helpers Linux ────────────────────────────────────────────────────────────
@@ -139,43 +126,17 @@ fn derive_linux_cache_paths(game_install_path: &str) -> Vec<std::path::PathBuf> 
 /// dossiers de cache Wine correspondants, dédupliqués.
 #[cfg(target_os = "linux")]
 fn get_all_linux_cache_paths(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
-    use tauri::Manager;
+    use crate::scripts::gamepath_preferences::read_saved_paths;
 
-    let config_dir = match app.path().app_config_dir() {
-        Ok(d) => d,
-        Err(_) => return Vec::new(),
-    };
-
-    let config_file = config_dir.join("game_paths.json");
-    if !config_file.exists() {
-        return Vec::new();
-    }
-
-    let json_data = match fs::read_to_string(&config_file) {
-        Ok(d) => d,
-        Err(_) => return Vec::new(),
-    };
-
-    #[derive(serde::Deserialize)]
-    struct GamePaths {
-        paths: Vec<String>,
-    }
-
-    let game_paths: GamePaths = match serde_json::from_str(&json_data) {
-        Ok(p) => p,
-        Err(_) => return Vec::new(),
-    };
-
-    let mut all_cache_paths: Vec<std::path::PathBuf> = Vec::new();
-    for game_path in &game_paths.paths {
-        for cache_path in derive_linux_cache_paths(game_path) {
-            if !all_cache_paths.contains(&cache_path) {
-                all_cache_paths.push(cache_path);
+    let mut all: Vec<std::path::PathBuf> = Vec::new();
+    for game_path in read_saved_paths(app) {
+        for cache_path in derive_linux_cache_paths(&game_path) {
+            if !all.contains(&cache_path) {
+                all.push(cache_path);
             }
         }
     }
-
-    all_cache_paths
+    all
 }
 
 // ─── Commandes Tauri ──────────────────────────────────────────────────────────
@@ -187,30 +148,24 @@ fn get_all_linux_cache_paths(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> 
 pub fn get_cache_informations(app: tauri::AppHandle) -> String {
     #[cfg(target_os = "windows")]
     {
-        let star_citizen_path = get_cache_path();
+        let star_citizen_path = match get_cache_path() {
+            Ok(p) => p,
+            Err(_) => return r#"{"folders":[]}"#.to_string(),
+        };
         let mut folders = Vec::new();
 
-        match fs::read_dir(&star_citizen_path) {
-            Ok(entries) => {
-                for entry in entries {
-                    let entry = entry.expect("Erreur lors de la lecture de l'entrée");
-                    let path = entry.path();
-                    if path.is_dir() {
-                        folders.push(get_folder_info(&path));
-                    }
+        if let Ok(entries) = fs::read_dir(&star_citizen_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    folders.push(get_folder_info(&path));
                 }
-            }
-            Err(e) => {
-                println!(
-                    "Erreur lors de l'accès au répertoire {}: {}",
-                    star_citizen_path, e
-                );
             }
         }
 
         let output = Output { folders };
         return serde_json::to_string_pretty(&output)
-            .expect("Erreur lors de la sérialisation en JSON");
+            .unwrap_or_else(|_| r#"{"folders":[]}"#.to_string());
     }
 
     #[cfg(target_os = "linux")]
@@ -247,15 +202,9 @@ pub fn get_cache_informations(app: tauri::AppHandle) -> String {
 pub fn delete_folder(path: &str) -> bool {
     let path = Path::new(path);
     if path.is_dir() {
-        match fs::remove_dir_all(path) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        fs::remove_dir_all(path).is_ok()
     } else {
-        match fs::remove_file(path) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        fs::remove_file(path).is_ok()
     }
 }
 
@@ -266,27 +215,27 @@ pub fn delete_folder(path: &str) -> bool {
 pub fn clear_cache(app: tauri::AppHandle) -> bool {
     #[cfg(target_os = "windows")]
     {
-        let star_citizen_path = get_cache_path();
+        let star_citizen_path = match get_cache_path() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
 
         if let Ok(entries) = fs::read_dir(&star_citizen_path) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        if let Err(_) = fs::remove_dir_all(&path) {
-                            return false;
-                        }
-                    } else {
-                        if let Err(_) = fs::remove_file(&path) {
-                            return false;
-                        }
-                    }
+            let mut all_ok = true;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let ok = if path.is_dir() {
+                    fs::remove_dir_all(&path).is_ok()
+                } else {
+                    fs::remove_file(&path).is_ok()
+                };
+                if !ok {
+                    all_ok = false;
                 }
             }
-            true
-        } else {
-            false
+            return all_ok;
         }
+        false
     }
 
     #[cfg(target_os = "linux")]
@@ -326,7 +275,7 @@ pub fn clear_cache(app: tauri::AppHandle) -> bool {
 pub async fn open_cache_folder(app: tauri::AppHandle) -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
-        let star_citizen_path = get_cache_path();
+        let star_citizen_path = get_cache_path()?;
 
         if std::path::Path::new(&star_citizen_path).exists() {
             Command::new("explorer")
