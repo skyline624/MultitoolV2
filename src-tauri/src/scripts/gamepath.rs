@@ -89,9 +89,35 @@ fn get_game_install_path(list_data: Vec<String>, check_exists: bool) -> Vec<Stri
 }
 
 #[cfg(target_os = "linux")]
-fn get_game_install_path(_list_data: Vec<String>, _check_exists: bool) -> Vec<String> {
-    // Sur Linux, on ne peut pas détecter automatiquement les installations Windows
-    Vec::new()
+fn get_game_install_path(_list_data: Vec<String>, check_exists: bool) -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+
+    let search_roots = [
+        format!("{}/.steam/steam/steamapps/common", home),
+        format!("{}/.local/share/Steam/steamapps/common", home),
+        format!("{}/.var/app/com.valvesoftware.Steam/.steam/steam/steamapps/common", home),
+        format!("{}/Games", home),
+        format!("{}/games", home),
+    ];
+
+    let mut found = Vec::new();
+
+    for root in &search_roots {
+        let sc_dir = std::path::Path::new(root).join("StarCitizen");
+        if !sc_dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&sc_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    check_and_add_path(&path.to_string_lossy(), check_exists, &mut found);
+                }
+            }
+        }
+    }
+
+    found
 }
 
 #[cfg(target_os = "windows")]
@@ -125,26 +151,6 @@ fn get_game_channel_id(install_path: &str) -> String {
     }
 
     "UNKNOWN".to_string()
-}
-
-/// Vérifie si un chemin personnalisé est valide (contient les fichiers Star Citizen)
-#[command]
-pub fn validate_game_path(path: String) -> Result<bool, String> {
-    let normalized_path = path.trim_end_matches('/').trim_end_matches('\\');
-
-    #[cfg(target_os = "windows")]
-    {
-        let exe_path = format!("{}\\Bin64\\StarCitizen.exe", normalized_path);
-        let data_p4k_path = format!("{}\\Data.p4k", normalized_path);
-        Ok(Path::new(&exe_path).exists() && Path::new(&data_p4k_path).exists())
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let exe_path = format!("{}/Bin64/StarCitizen.exe", normalized_path);
-        let data_p4k_path = format!("{}/Data.p4k", normalized_path);
-        Ok(Path::new(&exe_path).exists() && Path::new(&data_p4k_path).exists())
-    }
 }
 
 /// Informations sur une version installée de Star Citizen.
@@ -188,45 +194,3 @@ pub fn get_star_citizen_versions() -> VersionPaths {
     VersionPaths { versions }
 }
 
-/// Crée une structure VersionPaths à partir d'une liste de chemins personnalisés
-#[command]
-pub fn get_custom_game_versions(paths: Vec<String>) -> VersionPaths {
-    let mut versions = HashMap::new();
-
-    for path in paths {
-        let normalized_path = path.trim_end_matches('\\').trim_end_matches('/').to_string();
-
-        // Vérifier que le chemin existe et contient les fichiers Star Citizen
-        #[cfg(target_os = "windows")]
-        {
-            let exe_path = format!("{}\\Bin64\\StarCitizen.exe", normalized_path);
-            let data_p4k_path = format!("{}\\Data.p4k", normalized_path);
-            if !Path::new(&exe_path).exists() || !Path::new(&data_p4k_path).exists() {
-                continue;
-            }
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            let exe_path = format!("{}/Bin64/StarCitizen.exe", normalized_path);
-            let data_p4k_path = format!("{}/Data.p4k", normalized_path);
-            if !Path::new(&exe_path).exists() || !Path::new(&data_p4k_path).exists() {
-                continue;
-            }
-        }
-
-        let version = get_game_channel_id(&normalized_path);
-        if version != "UNKNOWN" && !versions.contains_key(&version) {
-            versions.insert(
-                version,
-                VersionInfo {
-                    path: normalized_path,
-                    translated: false,
-                    up_to_date: false,
-                },
-            );
-        }
-    }
-
-    VersionPaths { versions }
-}

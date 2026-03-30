@@ -8,10 +8,7 @@ use scripts::background_service::{
 use scripts::cache_functions::{
     clear_cache, delete_folder, get_cache_informations, open_cache_folder,
 };
-use scripts::gamepath::{get_custom_game_versions, get_star_citizen_versions, validate_game_path};
-use scripts::gamepath_preferences::{
-    clear_custom_game_paths, load_custom_game_paths, save_custom_game_paths,
-};
+use scripts::gamepath::get_star_citizen_versions;
 use scripts::local_characters_functions::{
     delete_character, download_character, duplicate_character, get_character_informations,
     open_characters_folder,
@@ -131,11 +128,6 @@ pub fn run() {
             load_theme_selected,
             get_latest_commits,
             get_star_citizen_versions,
-            get_custom_game_versions,
-            validate_game_path,
-            save_custom_game_paths,
-            load_custom_game_paths,
-            clear_custom_game_paths,
             is_game_translated,
             init_translation_files,
             is_translation_up_to_date,

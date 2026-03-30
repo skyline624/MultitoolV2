@@ -1,4 +1,4 @@
-use crate::scripts::gamepath::{get_custom_game_versions, VersionPaths};
+use crate::scripts::gamepath::{get_star_citizen_versions, VersionPaths};
 use regex::Regex;
 use reqwest::blocking::Client;
 use serde::Serialize;
@@ -138,10 +138,9 @@ pub async fn open_characters_folder(path: String) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Charge les versions de Star Citizen depuis la configuration sauvegardée.
-fn load_versions_from_config(app: &tauri::AppHandle) -> VersionPaths {
-    use crate::scripts::gamepath_preferences::read_saved_paths;
-    get_custom_game_versions(read_saved_paths(app))
+/// Retourne les versions de Star Citizen détectées automatiquement.
+fn load_versions_from_config() -> VersionPaths {
+    get_star_citizen_versions()
 }
 
 /// Duplique un personnage personnalisé vers toutes les autres versions de Star Citizen installées.
@@ -149,8 +148,8 @@ fn load_versions_from_config(app: &tauri::AppHandle) -> VersionPaths {
 /// Retourne `Ok(true)` si au moins une copie a été effectuée, `Ok(false)` si aucune autre
 /// version n'est installée (installation unique).
 #[command]
-pub fn duplicate_character(app: tauri::AppHandle, character_path: String) -> Result<bool, String> {
-    let versions = load_versions_from_config(&app);
+pub fn duplicate_character(character_path: String) -> Result<bool, String> {
+    let versions = load_versions_from_config();
     let source = Path::new(&character_path);
 
     if !source.exists() {
@@ -205,8 +204,8 @@ pub fn duplicate_character(app: tauri::AppHandle, character_path: String) -> Res
 
 /// Télécharge un personnage personnalisé depuis une URL et le sauvegarde dans toutes les versions installées.
 #[command]
-pub fn download_character(app: tauri::AppHandle, dna_url: String, title: String) -> Result<bool, String> {
-    let versions = load_versions_from_config(&app);
+pub fn download_character(dna_url: String, title: String) -> Result<bool, String> {
+    let versions = load_versions_from_config();
     let first = versions
         .versions
         .values()
@@ -273,7 +272,7 @@ pub fn download_character(app: tauri::AppHandle, dna_url: String, title: String)
         bytes.len()
     );
 
-    duplicate_character(app, file_path.to_string_lossy().to_string())?;
+    duplicate_character(file_path.to_string_lossy().to_string())?;
     Ok(true)
 }
 

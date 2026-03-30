@@ -122,15 +122,14 @@ fn derive_linux_cache_paths(game_install_path: &str) -> Vec<std::path::PathBuf> 
     cache_paths
 }
 
-/// Charge tous les chemins de jeu sauvegardés et retourne la liste de tous les
-/// dossiers de cache Wine correspondants, dédupliqués.
+/// Dérive les chemins de cache pour toutes les installations détectées automatiquement.
 #[cfg(target_os = "linux")]
-fn get_all_linux_cache_paths(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
-    use crate::scripts::gamepath_preferences::read_saved_paths;
+fn get_all_linux_cache_paths() -> Vec<std::path::PathBuf> {
+    use crate::scripts::gamepath::get_star_citizen_versions;
 
     let mut all: Vec<std::path::PathBuf> = Vec::new();
-    for game_path in read_saved_paths(app) {
-        for cache_path in derive_linux_cache_paths(&game_path) {
+    for info in get_star_citizen_versions().versions.into_values() {
+        for cache_path in derive_linux_cache_paths(&info.path) {
             if !all.contains(&cache_path) {
                 all.push(cache_path);
             }
@@ -145,7 +144,7 @@ fn get_all_linux_cache_paths(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> 
 ///
 /// Retourne un JSON contenant la liste des dossiers avec leur nom, taille et chemin.
 #[command]
-pub fn get_cache_informations(app: tauri::AppHandle) -> String {
+pub fn get_cache_informations() -> String {
     #[cfg(target_os = "windows")]
     {
         let star_citizen_path = match get_cache_path() {
@@ -170,7 +169,7 @@ pub fn get_cache_informations(app: tauri::AppHandle) -> String {
 
     #[cfg(target_os = "linux")]
     {
-        let cache_paths = get_all_linux_cache_paths(&app);
+        let cache_paths = get_all_linux_cache_paths();
 
         if cache_paths.is_empty() {
             return r#"{"folders":[]}"#.to_string();
@@ -212,7 +211,7 @@ pub fn delete_folder(path: &str) -> bool {
 ///
 /// Retourne `true` si tous les éléments ont été supprimés avec succès, `false` sinon.
 #[command]
-pub fn clear_cache(app: tauri::AppHandle) -> bool {
+pub fn clear_cache() -> bool {
     #[cfg(target_os = "windows")]
     {
         let star_citizen_path = match get_cache_path() {
@@ -240,7 +239,7 @@ pub fn clear_cache(app: tauri::AppHandle) -> bool {
 
     #[cfg(target_os = "linux")]
     {
-        let cache_paths = get_all_linux_cache_paths(&app);
+        let cache_paths = get_all_linux_cache_paths();
 
         if cache_paths.is_empty() {
             return false;
@@ -272,7 +271,7 @@ pub fn clear_cache(app: tauri::AppHandle) -> bool {
 
 /// Ouvre le dossier de cache de Star Citizen dans le gestionnaire de fichiers.
 #[command]
-pub async fn open_cache_folder(app: tauri::AppHandle) -> Result<bool, String> {
+pub async fn open_cache_folder() -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
         let star_citizen_path = get_cache_path()?;
@@ -290,7 +289,7 @@ pub async fn open_cache_folder(app: tauri::AppHandle) -> Result<bool, String> {
 
     #[cfg(target_os = "linux")]
     {
-        let first_path = get_all_linux_cache_paths(&app)
+        let first_path = get_all_linux_cache_paths()
             .into_iter()
             .find(|p| p.exists());
 
